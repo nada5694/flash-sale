@@ -39,6 +39,14 @@ scheduler:
 
 ------------------------------------------------------------------------
 
+## Assumptions
+
+- Holds expire after 2 minutes and the expiry job is expected to run every minute.
+- Payment provider may retry webhooks, so idempotency is required.
+- Only one product is needed for the assignment.
+
+------------------------------------------------------------------------
+
 ## API Endpoints
 
 ### GET /api/products/{id}
@@ -111,6 +119,8 @@ The test suite includes:
 -   Hold expiry behaviour\
 -   Idempotent webhook handling\
 -   Webhook arriving before the client receives the order response
+-   A simple Postman collection is included under the `postman/` folder for quick manual testing.
+
 
 Run tests using:
 
