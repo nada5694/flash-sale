@@ -1,59 +1,122 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Flash Sale API (Laravel)
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+This is a small Laravel 12 API built for a flash-sale use case.\
+The API handles temporary stock holds, order creation, and an idempotent
+payment webhook.\
+The main focus was making the flow safe under concurrency and avoiding
+any overselling.
 
-## About Laravel
+MySQL (InnoDB) is used for row-level locking, and the project includes a
+background job for expiring holds.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+------------------------------------------------------------------------
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Running the project
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+1.  Clone the repository\
 
-## Learning Laravel
+2.  Install dependencies:
+- composer install
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+3.  Create the `.env` file:
+- cp .env.example .env
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+4.  Update your database credentials in `.env`
 
-## Laravel Sponsors
+5.  Generate the application key:
+- php artisan key:generate
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+6.  Run migrations and seeders:
+- php artisan migrate --seed
 
-### Premium Partners
+7.  Start the server:
+- php artisan serve
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+If you want automatic expiry of holds to run continuously, start the
+scheduler:
 
-## Contributing
+- php artisan schedule:work
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+------------------------------------------------------------------------
 
-## Code of Conduct
+## API Endpoints
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+### GET /api/products/{id}
 
-## Security Vulnerabilities
+Returns product information along with the currently available stock.
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+### POST /api/holds
 
-## License
+Creates a temporary hold (around 2 minutes).
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Example body:
+
+``` json
+{
+  "product_id": 1,
+  "qty": 2
+}
+```
+
+### POST /api/orders
+
+Creates an order from a valid, unexpired hold.
+
+Example body:
+
+``` json
+{
+  "hold_id": 10
+}
+```
+
+### POST /api/payments/webhook
+
+Processes a payment result.\
+This endpoint is idempotent using the `idempotency_key`.
+
+Example body:
+
+``` json
+{
+  "order_id": 10,
+  "status": "success",
+  "idempotency_key": "unique-key"
+}
+```
+
+------------------------------------------------------------------------
+
+## Implementation notes
+
+-   Holds reduce available stock immediately\
+-   Hold creation and stock checks use transactions with row-level
+    locking\
+-   A hold can only be used once\
+-   Expired holds are not accepted when creating orders\
+-   Payment webhook updates the order status and releases the hold on
+    failures\
+-   Webhook retries are handled safely through the idempotency key\
+-   A scheduled job cleans expired holds\
+-   Product endpoint uses caching for faster reads (availability is
+    always computed fresh)
+
+------------------------------------------------------------------------
+
+## Tests
+
+The test suite includes:
+
+-   Parallel hold attempts to ensure no overselling\
+-   Hold expiry behaviour\
+-   Idempotent webhook handling\
+-   Webhook arriving before the client receives the order response
+
+Run tests using:
+
+    php artisan test
+
+------------------------------------------------------------------------
+
+This implementation was kept simple and focused on correctness under
+concurrency.
